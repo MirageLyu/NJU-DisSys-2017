@@ -23,13 +23,25 @@ import "labrpc"
 // import "bytes"
 // import "encoding/gob"
 
-
-
 //
 // as each Raft peer becomes aware that successive log entries are
 // committed, the peer should send an ApplyMsg to the service (or
 // tester) on the same server, via the applyCh passed to Make().
 //
+const (
+	Follower int = iota
+	Candidate
+	Leader
+)
+
+const VotedForNull = -1
+
+type Log struct {
+	Index   int
+	Term    int
+	Command interface{}
+}
+
 type ApplyMsg struct {
 	Index       int
 	Command     interface{}
@@ -46,10 +58,23 @@ type Raft struct {
 	persister *Persister
 	me        int // index into peers[]
 
-	// Your data here.
-	// Look at the paper's Figure 2 for a description of what
-	// state a Raft server must maintain.
+	currentTerm int
+	votedFor    int
+	log         []Log
 
+	commitIndex int
+	lastApplied int
+
+	nextIndex  []int
+	matchIndex []int
+
+	state     int
+	voteCount int
+
+	votedCh     chan bool
+	toLeaderCh  chan bool
+	heartbeatCh chan bool
+	applyCh     chan ApplyMsg
 }
 
 // return currentTerm and whether this server
@@ -58,7 +83,10 @@ func (rf *Raft) GetState() (int, bool) {
 
 	var term int
 	var isleader bool
-	// Your code here.
+
+	term = rf.currentTerm
+	isleader = rf.state == Leader
+
 	return term, isleader
 }
 
@@ -89,9 +117,6 @@ func (rf *Raft) readPersist(data []byte) {
 	// d.Decode(&rf.xxx)
 	// d.Decode(&rf.yyy)
 }
-
-
-
 
 //
 // example RequestVote RPC arguments structure.
@@ -136,7 +161,6 @@ func (rf *Raft) sendRequestVote(server int, args RequestVoteArgs, reply *Request
 	return ok
 }
 
-
 //
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
@@ -154,7 +178,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index := -1
 	term := -1
 	isLeader := true
-
 
 	return index, term, isLeader
 }
@@ -191,7 +214,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
-
 
 	return rf
 }
